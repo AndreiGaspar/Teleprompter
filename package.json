@@ -1,0 +1,12 @@
+{
+  "name": "teleprompter",
+  "version": "1.0.0",
+  "description": "Multi-actor teleprompter: one script, each actor logs in with a role",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

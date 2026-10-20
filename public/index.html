@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Teleprompter</title>
+<style>
+  :root {
+    --bg: #0e0f12; --panel: #181a20; --text: #e8e9ee; --dim: #6b6f7c;
+    --accent: #ffd54a; --me: #4fc3f7; --ok: #66bb6a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .hidden { display: none !important; }
+
+  /* Login */
+  #login { max-width: 480px; margin: 0 auto; padding: 32px 20px; }
+  #login h1 { font-size: 1.6rem; margin: 0 0 6px; }
+  #login p { color: var(--dim); margin: 0 0 24px; }
+  .rolebtn { display: block; width: 100%; padding: 18px; margin: 0 0 12px; border: 2px solid #2a2d37;
+    border-radius: 12px; background: var(--panel); color: var(--text); font-size: 1.2rem; text-align: left; cursor: pointer; }
+  .rolebtn:active { border-color: var(--accent); }
+  .rolebtn small { float: right; color: var(--ok); }
+  .rolebtn.director { border-style: dashed; color: var(--dim); }
+
+  /* Prompter */
+  #app { display: flex; flex-direction: column; height: 100%; }
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--panel);
+    border-bottom: 1px solid #2a2d37; flex-wrap: wrap; padding-top: max(10px, env(safe-area-inset-top)); }
+  header .who { font-weight: 700; color: var(--me); }
+  header .online { color: var(--dim); font-size: .85rem; flex: 1; min-width: 120px; }
+  header .online b { color: var(--ok); font-weight: 600; }
+  header button.small { background: none; border: 1px solid #2a2d37; color: var(--dim); border-radius: 8px; padding: 6px 10px; }
+  #status { font-size: .8rem; color: var(--dim); }
+  #status.bad { color: #ef5350; }
+
+  #director { display: flex; gap: 8px; padding: 8px 14px; background: #14161b; border-bottom: 1px solid #2a2d37; }
+  #director button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #2a2d37; background: var(--panel); color: var(--text); }
+
+  #scroll { flex: 1; overflow-y: auto; padding: 40vh 18px 40vh; scroll-behavior: smooth; }
+  .line { max-width: 820px; margin: 0 auto 18px; padding: 12px 16px; border-radius: 12px;
+    border-left: 6px solid transparent; font-size: 1.35rem; line-height: 1.45; transition: opacity .2s, transform .2s; }
+  .line .who { display: block; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-bottom: 2px; }
+  .line.past { opacity: .35; }
+  .line.future { opacity: .75; }
+  .line.mine { border-left-color: var(--me); background: rgba(79,195,247,.08); }
+  .line.mine .who { color: var(--me); }
+  .line.current { opacity: 1; background: rgba(255,213,74,.14); border-left-color: var(--accent);
+    font-size: 1.8rem; transform: scale(1.01); }
+  .line.current .who { color: var(--accent); }
+  .line.current.mine { background: rgba(255,213,74,.22); box-shadow: 0 0 0 2px var(--accent); }
+  .line.dir { font-style: italic; color: var(--dim); font-size: 1.05rem; text-align: center; border: 0; background: none; }
+  .line.clickable { cursor: pointer; }
+  #end { text-align: center; color: var(--dim); padding: 30px; }
+
+  #bar { padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid #2a2d37; }
+  #done { width: 100%; padding: 22px; font-size: 1.4rem; font-weight: 700; border: 0; border-radius: 14px;
+    background: #2a2d37; color: var(--dim); }
+  #done.ready { background: var(--accent); color: #111; }
+  #done:disabled { opacity: .9; }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h1>Teleprompter</h1>
+  <p>Choose your role to join.</p>
+  <div id="rolelist"></div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <span class="who" id="me"></span>
+    <span class="online" id="online"></span>
+    <span id="status">connecting…</span>
+    <button class="small" id="logout">Switch role</button>
+  </header>
+  <div id="director" class="hidden">
+    <button id="dBack">◀ Back</button>
+    <button id="dNext">Next ▶</button>
+    <button id="dReset">Restart</button>
+    <button id="dReload">Reload script</button>
+  </div>
+  <div id="scroll"><div id="lines"></div><div id="end" class="hidden">— End of script —</div></div>
+  <div id="bar"><button id="done" disabled>Waiting…</button></div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let ws, role = localStorage.getItem('tp_role'), roles = [], director = 'Director';
+  let script = [], current = 0, online = [], lineEls = [], wasMyTurn = false;
+
+  function connect() {
+    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+    ws.onopen = () => {
+      $('status').textContent = 'live'; $('status').className = '';
+      if (role) ws.send(JSON.stringify({ type: 'login', role }));
+    };
+    ws.onclose = () => {
+      $('status').textContent = 'reconnecting…'; $('status').className = 'bad';
+      setTimeout(connect, 1000);
+    };
+    ws.onmessage = e => {
+      const m = JSON.parse(e.data);
+      if (m.type === 'roles') { roles = m.roles; director = m.director; renderLogin(); }
+      else if (m.type === 'welcome') { showApp(); }
+      else if (m.type === 'script') { script = m.lines; roles = m.roles; renderScript(); }
+      else if (m.type === 'state') { current = m.current; online = m.online; update(); }
+      else if (m.type === 'error') { alert(m.message); if (!lineEls.length) logout(); }
+    };
+  }
+
+  function renderLogin() {
+    const box = $('rolelist'); box.innerHTML = '';
+    [...roles, director].forEach(r => {
+      const b = document.createElement('button');
+      b.className = 'rolebtn' + (r === director ? ' director' : '');
+      b.textContent = r === director ? 'Director (control everything)' : r;
+      b.onclick = () => { role = r; localStorage.setItem('tp_role', role); ws.send(JSON.stringify({ type: 'login', role })); };
+      box.appendChild(b);
+    });
+  }
+
+  function showApp() {
+    $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+    $('me').textContent = role;
+    $('director').classList.toggle('hidden', role !== director);
+  }
+
+  function logout() {
+    localStorage.removeItem('tp_role'); role = null;
+    $('app').classList.add('hidden'); $('login').classList.remove('hidden');
+    ws.close(); // reconnects fresh and shows the role list
+  }
+
+  function renderScript() {
+    const box = $('lines'); box.innerHTML = ''; lineEls = [];
+    script.forEach((l, i) => {
+      const d = document.createElement('div');
+      if (l.type === 'direction') {
+        d.className = 'line dir'; d.textContent = '(' + l.text + ')';
+      } else {
+        d.className = 'line' + (l.role === role ? ' mine' : '');
+        const w = document.createElement('span'); w.className = 'who'; w.textContent = l.role;
+        d.appendChild(w); d.appendChild(document.createTextNode(l.text));
+        if (role === director) { d.classList.add('clickable'); d.onclick = () => send({ type: 'jump', index: i }); }
+      }
+      box.appendChild(d); lineEls.push(d);
+    });
+    update();
+  }
+
+  function update() {
+    if (!lineEls.length) return;
+    lineEls.forEach((el, i) => {
+      if (script[i].type === 'direction') { el.classList.toggle('past', i < current); return; }
+      el.classList.toggle('past', i < current);
+      el.classList.toggle('current', i === current);
+      el.classList.toggle('future', i > current);
+    });
+    $('end').classList.toggle('hidden', current < script.length);
+
+    const cur = script[current];
+    const myTurn = !!cur && cur.type === 'line' && cur.role === role;
+    const canAct = myTurn || (role === director && !!cur);
+    const btn = $('done');
+    btn.disabled = !canAct;
+    btn.classList.toggle('ready', canAct);
+    btn.textContent = !cur ? 'Finished'
+      : myTurn ? 'Done — next line ▶'
+      : role === director ? 'Skip ' + cur.role + '’s line ▶'
+      : 'Waiting for ' + cur.role + '…';
+    if (myTurn && !wasMyTurn && navigator.vibrate) navigator.vibrate([200, 80, 200]);
+    wasMyTurn = myTurn;
+
+    $('online').innerHTML = 'Online: ' + (online.length ? online.map(r => '<b>' + esc(r) + '</b>').join(', ') : 'nobody');
+
+    const target = lineEls[current] || $('end');
+    target.scrollIntoView({ block: 'center' });
+  }
+
+  const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const send = m => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
+
+  $('done').onclick = () => send({ type: 'done' });
+  $('logout').onclick = logout;
+  $('dBack').onclick = () => send({ type: 'back' });
+  $('dNext').onclick = () => send({ type: 'done' });
+  $('dReset').onclick = () => { if (confirm('Restart from the first line?')) send({ type: 'reset' }); };
+  $('dReload').onclick = () => { if (confirm('Reload script.txt from disk and restart?')) send({ type: 'reload' }); };
+  document.addEventListener('keydown', e => {
+    if ((e.key === ' ' || e.key === 'Enter') && !$('done').disabled) { e.preventDefault(); send({ type: 'done' }); }
+  });
+
+  connect();
+})();
+</script>
+</body>
+</html>

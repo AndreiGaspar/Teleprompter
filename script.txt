@@ -1,0 +1,17 @@
+# Format:  ROLE: spoken line
+# Lines in (parentheses) or [brackets] are stage directions, shown but never waited on.
+# Lines starting with # and blank lines are ignored.
+
+[A kitchen, early morning. ANNA stands at the window.]
+
+ANNA: You're up early.
+BOB: Couldn't sleep. The storm kept me awake.
+ANNA: It stopped an hour ago.
+(Bob joins her at the window.)
+BOB: Then why is the garden still shaking?
+NARRATOR: Neither of them spoke of the noise from the cellar.
+ANNA: Did you hear that?
+BOB: I heard nothing.
+ANNA: Liar.
+[Pause. A door creaks.]
+BOB: Fine. I heard it.
