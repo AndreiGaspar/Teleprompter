@@ -1,8 +1,10 @@
 # Format:  ROLE: spoken line
 # Lines in (parentheses) or [brackets] are stage directions, shown but never waited on.
 # Lines starting with # and blank lines are ignored.
+# A stage direction that mentions music is a music cue for the Director's device, e.g.
+# [Music: tense] or [Music: stop]. Tracks come from public/music/ (see README).
 
-[A kitchen, early morning. ANNA stands at the window.]
+[A kitchen, early morning. ANNA stands at the window. Music: calm, fading in.]
 
 ANNA: You're up early.
 BOB: Couldn't sleep. The storm kept me awake.
@@ -13,5 +15,6 @@ NARRATOR: Neither of them spoke of the noise from the cellar.
 ANNA: Did you hear that?
 BOB: I heard nothing.
 ANNA: Liar.
-[Pause. A door creaks.]
+[Pause. A door creaks. Music: tense.]
 BOB: Fine. I heard it.
+[Music: fade out. Lights down.]

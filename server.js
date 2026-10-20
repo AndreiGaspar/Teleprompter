@@ -9,6 +9,8 @@ const { WebSocketServer } = require('ws');
 const PORT = process.env.PORT || 3000;
 const SCRIPT_FILE = path.resolve(process.argv[2] || path.join(__dirname, 'script.txt'));
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const MUSIC_DIR = path.join(PUBLIC_DIR, 'music'); // background tracks played on the Director's device
+const AUDIO_EXT = new Set(['.mp3', '.ogg', '.wav', '.m4a', '.aac']);
 const DIRECTOR = 'Director'; // special login: can advance/undo any line
 
 // ---------- Script parsing ----------
@@ -31,11 +33,28 @@ function parseScript(text) {
   return lines;
 }
 
+// ---------- Background music tracks ----------
+// public/music/soft-piano.mp3 -> { name: 'soft piano', file: 'soft-piano.mp3' }
+// The Director's client matches stage directions that mention music against these names.
+function listTracks() {
+  let names;
+  try { names = fs.readdirSync(MUSIC_DIR); } catch { return []; } // no music folder = no tracks
+  return names
+    .filter(f => AUDIO_EXT.has(path.extname(f).toLowerCase()))
+    .sort()
+    .map(f => ({
+      name: path.basename(f, path.extname(f)).replace(/[-_]+/g, ' ').trim().toLowerCase(),
+      file: f,
+    }));
+}
+
 let script = [];
 let roles = [];
+let tracks = [];
 function loadScript() {
   script = parseScript(fs.readFileSync(SCRIPT_FILE, 'utf8'));
   roles = [...new Set(script.filter(l => l.type === 'line').map(l => l.role))];
+  tracks = listTracks();
 }
 loadScript();
 
@@ -58,23 +77,46 @@ function stateMsg() {
   return JSON.stringify({ type: 'state', current, total: script.length, online: online() });
 }
 function scriptMsg() {
-  return JSON.stringify({ type: 'script', roles, lines: script, director: DIRECTOR });
+  return JSON.stringify({ type: 'script', roles, lines: script, director: DIRECTOR, tracks });
 }
 function broadcast(msg) {
   for (const c of wss.clients) if (c.readyState === 1 && c.role) c.send(msg);
 }
 
 // ---------- HTTP (static files) ----------
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+const MIME = {
+  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
+  '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.aac': 'audio/aac',
+};
 const server = http.createServer((req, res) => {
-  const url = req.url.split('?')[0];
+  let url;
+  try { url = decodeURIComponent(req.url.split('?')[0]); } // track names may contain spaces
+  catch { res.writeHead(400); return res.end(); }
   const rel = url === '/' ? '/index.html' : url;
   const file = path.normalize(path.join(PUBLIC_DIR, rel));
-  if (!file.startsWith(PUBLIC_DIR)) { res.writeHead(403); return res.end(); }
-  fs.readFile(file, (err, data) => {
-    if (err) { res.writeHead(404); return res.end('Not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
-    res.end(data);
+  if (!file.startsWith(PUBLIC_DIR + path.sep)) { res.writeHead(403); return res.end(); }
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) { res.writeHead(404); return res.end('Not found'); }
+    const headers = {
+      'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
+      'Accept-Ranges': 'bytes', // iOS Safari refuses to play audio from servers without byte ranges
+    };
+    let start = 0, end = st.size - 1, status = 200;
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (range && (range[1] || range[2]) && st.size > 0) {
+      if (range[1] === '') start = Math.max(0, st.size - Number(range[2])); // "-N" = last N bytes
+      else {
+        start = Number(range[1]);
+        if (range[2] !== '') end = Math.min(end, Number(range[2]));
+      }
+      if (start > end) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+      status = 206;
+      headers['Content-Range'] = `bytes ${start}-${end}/${st.size}`;
+    }
+    headers['Content-Length'] = st.size === 0 ? 0 : end - start + 1;
+    res.writeHead(status, headers);
+    if (req.method === 'HEAD' || st.size === 0) return res.end();
+    fs.createReadStream(file, { start, end }).on('error', () => res.destroy()).pipe(res);
   });
 });
 
