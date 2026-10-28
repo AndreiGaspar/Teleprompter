@@ -1,0 +1,41 @@
+# Feature test: exercises the script parser and the music cues, including the awkward cases.
+# What you should see is written in each line, so you can check it by eye as you press Next.
+
+# --- Blank lines and comment lines (like this one) never appear on screen. ---
+
+[Parsing. Square-bracket directions and parenthesised ones are both shown, never waited on.]
+(This one uses parentheses and is also never waited on.)
+A plain line with no colon is shown as a stage direction too.
+
+anna: lowercase role names are upper-cased, so this is spoken by ANNA.
+OLD MAN: Role names may contain spaces; this is OLD MAN.
+BOB: Only the first colon splits role from text: note: this part keeps its colon.
+NARRATOR: A very long line, to check wrapping on a small screen. It keeps going and going, with several clauses, a few commas, and no real point, until it has certainly wrapped at least twice on a phone held upright.
+
+[Spoken lines. Lines that only talk about tunes must not trigger anything.]
+ANNA: I really love music, and I could talk about music all day. No cue fires here.
+BOB: Same for me. This line says calm and tense and sad, and still nothing changes.
+(A musical interlude. The word here is "musical", so this direction is not a cue.)
+
+[Cues. Each of these changes the soundtrack, or says why it cannot.]
+[Music: calm]
+OLD MAN: Calm is playing, with a short crossfade.
+(Hopeful music begins.)
+ANNA: Hopeful is playing. The cue is a sentence, and the track name can sit anywhere in it.
+[End of scene. Music: sad, fading in slowly.]
+BOB: Only the sentence about music is read, so "End of scene" does not stop it. Sad is playing, over four seconds.
+[Music: thunder]
+ANNA: There is no thunder track. The music bar says "no file for Music: thunder" and sad keeps playing.
+[Music: tense]
+BOB: A real cue clears that warning again. Tense is playing.
+
+[Stopping.]
+[Music fades out. The lights go down.]
+OLD MAN: Silence. "Fades out" stops the music slowly.
+[Music: hopeful]
+ANNA: Back to a track, from silence.
+[Music: stop]
+BOB: A plain stop, in one and a half seconds.
+
+[Navigation. Press Back, tap an earlier line to jump, then Restart. The soundtrack must always match the line you land on.]
+NARRATOR: That is everything. The end.

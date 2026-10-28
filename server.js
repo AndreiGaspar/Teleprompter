@@ -54,12 +54,18 @@ function listTracks() {
 
 // ---------- Available scripts ----------
 // scripts/act-1.txt -> { id: 'act-1.txt', name: 'act 1' }; sorted naturally (act 2 before act 10).
+// A short number prefix only sets the order and is not shown: 01-kitchen.txt -> "kitchen".
+// The first script in that order is the one live when the server starts.
+const prettyName = f => {
+  const base = f.replace(/\.txt$/i, '');
+  return base.replace(/^\d{1,3}[-_.\s]+(?=\S)/, '').replace(/[-_]+/g, ' ').trim() || base;
+};
 function listScripts() {
-  if (!SOURCE_IS_DIR) return [{ id: path.basename(SOURCE), name: path.basename(SOURCE, path.extname(SOURCE)), file: SOURCE }];
+  if (!SOURCE_IS_DIR) return [{ id: path.basename(SOURCE), name: prettyName(path.basename(SOURCE)), file: SOURCE }];
   return fs.readdirSync(SOURCE)
     .filter(f => /\.txt$/i.test(f))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
-    .map(f => ({ id: f, name: f.replace(/\.txt$/i, '').replace(/[-_]+/g, ' ').trim(), file: path.join(SOURCE, f) }));
+    .map(f => ({ id: f, name: prettyName(f), file: path.join(SOURCE, f) }));
 }
 
 let script = [];

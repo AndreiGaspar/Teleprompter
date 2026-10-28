@@ -22,7 +22,9 @@ also plays the background music (see below).
 ## Multiple scripts
 
 Every `.txt` file in `scripts/` is a script (`act-1.txt` shows as "act 1", sorted
-naturally so act 2 comes before act 10). The first one is live when the server starts.
+naturally so act 2 comes before act 10). A short number prefix sets the order and is
+not shown: `01-kitchen.txt` appears as "kitchen". The first script in that order is
+live when the server starts.
 When there is more than one, the Director sees a script picker; choosing one switches
 **everyone** to it, restarting from its first line, with roles and music following the
 new script. Actors whose role has no lines in it see "No lines for you in this script"
@@ -31,6 +33,15 @@ and can use **Switch role**.
 Add, rename or edit script files while the server runs, then press **Reload script**
 (it re-reads the folder and the active script and restarts). A script that fails to
 load is reported to the Director and the show carries on with the current one.
+
+Sample scripts that come with the repo:
+
+| Script | What it is |
+| --- | --- |
+| `01-kitchen.txt` | The original two-person scene (ANNA, BOB, NARRATOR), with music cues |
+| `02-lighthouse.txt` | A second cast (MARA, TOM), to try switching scripts |
+| `03-music-demo.txt` | Walks through all four sample tracks, crossfades and a stop |
+| `04-feature-test.txt` | Parser and cue edge cases; each line says what you should see |
 
 ## Script format (any `.txt` in `scripts/`)
 
@@ -69,7 +80,12 @@ Then write a stage direction that mentions music and names a track:
 - A cue with no matching file is ignored and shown as "no file for …" in the
   Director's music bar. Add or rename files, then press **Reload script**.
 
+Four sample tracks are included in `public/music/`: `calm`, `tense`, `sad` and `hopeful`.
+They are original ambient loops synthesized for this project (24 s, mono, WAV) and
+free to use, replace or delete. Tracks loop, so use audio that loops cleanly: WAV
+and `.ogg` loop without a gap, while `.mp3` and `.m4a` usually add a short silence at
+the loop point.
+
 Browsers only allow audio after a tap, so the Director taps **♪ Tap to enable** (the
 login tap usually does it; after a page reload any tap does). The bar also has
-mute and a volume slider. Tracks loop, so use files that loop cleanly (`.ogg` or a
-trimmed `.mp3` avoids a gap at the seam).
+mute and a volume slider.

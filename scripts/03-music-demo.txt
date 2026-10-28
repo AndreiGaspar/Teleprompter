@@ -1,0 +1,24 @@
+# Music demo: walks through every sample track in public/music (calm, tense, sad, hopeful).
+# Select this script as Director and press Next to hear each cue. Cues are the stage
+# directions that mention music; the track name is the file name without its extension.
+
+[A quiet town square at dawn. Calm music fades in slowly.]
+
+GUIDE: Welcome. This first track is called calm. Listen to it settle in.
+VISITOR: It's gentle. It feels like the start of a story.
+GUIDE: Now watch what happens when the mood turns.
+[Music: tense.]
+VISITOR: The music changed on its own, with a crossfade.
+GUIDE: Quick cues crossfade in one and a half seconds, so the change is hard to miss.
+(A bell tolls somewhere far away.)
+VISITOR: Why does it sound like something is about to go wrong?
+GUIDE: Because it is a tense piece, with a heartbeat under it.
+[Sad music begins, fading in slowly.]
+VISITOR: That is the saddest thing I have heard all morning.
+GUIDE: Words like "slowly" and "fading" make the change last four seconds instead.
+[Music: hopeful]
+VISITOR: And now it is bright again.
+GUIDE: That is the last track. Try Back and tapping a line to jump: the music always follows the line you land on.
+[Music: stop.]
+VISITOR: Silence. Then the show is over.
+GUIDE: Press Restart to hear it all again.
