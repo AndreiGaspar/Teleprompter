@@ -10,15 +10,29 @@ everyone's screen advances to the next line.
 ```
 npm install
 npm start            # http://localhost:3000
-PORT=8080 node server.js my-script.txt
+PORT=8080 node server.js my-scripts-folder     # another folder of scripts
+node server.js my-script.txt                   # or just one script file
 ```
 
 Actors open `http://<server-ip>:3000` on their phones/tablets and pick a role.
 A special **Director** login can skip, go back, jump to any line (tap it),
-restart, or reload the script from disk. The Director's device also plays the
-background music (see below).
+restart, switch scripts, or reload the scripts from disk. The Director's device
+also plays the background music (see below).
 
-## Script format (`script.txt`)
+## Multiple scripts
+
+Every `.txt` file in `scripts/` is a script (`act-1.txt` shows as "act 1", sorted
+naturally so act 2 comes before act 10). The first one is live when the server starts.
+When there is more than one, the Director sees a script picker; choosing one switches
+**everyone** to it, restarting from its first line, with roles and music following the
+new script. Actors whose role has no lines in it see "No lines for you in this script"
+and can use **Switch role**.
+
+Add, rename or edit script files while the server runs, then press **Reload script**
+(it re-reads the folder and the active script and restarts). A script that fails to
+load is reported to the Director and the show carries on with the current one.
+
+## Script format (any `.txt` in `scripts/`)
 
 ```
 ROLE: spoken line

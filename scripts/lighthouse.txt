@@ -1,0 +1,14 @@
+# A second sample script: shows switching scripts, and a different cast (MARA, TOM).
+# Music cues work in every script; tracks are shared from public/music/.
+
+[A lighthouse at dusk. MARA climbs the last steps. Music: calm.]
+
+MARA: The lamp is out again.
+TOM: It was lit when I left.
+(Tom checks the lamp.)
+TOM: The glass is cold. Nobody's been here.
+MARA: Then who left the door open?
+[Wind rises. Music: tense.]
+TOM: We should go.
+MARA: Not yet.
+[Music: stop.]

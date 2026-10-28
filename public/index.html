@@ -37,6 +37,7 @@
 
   #director { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 14px; background: #14161b; border-bottom: 1px solid #2a2d37; }
   #director button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #2a2d37; background: var(--panel); color: var(--text); }
+  #dScript { flex-basis: 100%; padding: 8px; border-radius: 8px; border: 1px solid #2a2d37; background: var(--panel); color: var(--text); font-size: 1rem; }
   #music { flex-basis: 100%; display: flex; align-items: center; gap: 10px; }
   #music button { flex: 0 0 auto; padding: 8px 12px; }
   #music button.attn { border-color: var(--accent); color: var(--accent); }
@@ -82,6 +83,7 @@
     <button class="small" id="logout">Switch role</button>
   </header>
   <div id="director" class="hidden">
+    <select id="dScript" class="hidden" aria-label="Script"></select>
     <button id="dBack">◀ Back</button>
     <button id="dNext">Next ▶</button>
     <button id="dReset">Restart</button>
@@ -101,6 +103,7 @@
   const $ = id => document.getElementById(id);
   let ws, role = localStorage.getItem('tp_role'), roles = [], director = 'Director';
   let script = [], current = 0, online = [], lineEls = [], wasMyTurn = false, tracks = [];
+  let scripts = [], activeScript = null;
 
   function connect() {
     ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
@@ -116,7 +119,12 @@
       const m = JSON.parse(e.data);
       if (m.type === 'roles') { roles = m.roles; director = m.director; renderLogin(); }
       else if (m.type === 'welcome') { showApp(); }
-      else if (m.type === 'script') { script = m.lines; roles = m.roles; tracks = m.tracks || []; renderScript(); }
+      else if (m.type === 'script') {
+        script = m.lines; roles = m.roles; tracks = m.tracks || [];
+        if (typeof m.current === 'number') current = m.current; // keep script and position in step
+        scripts = m.scripts || []; activeScript = m.active;
+        renderScriptPicker(); renderScript();
+      }
       else if (m.type === 'state') { current = m.current; online = m.online; update(); }
       else if (m.type === 'error') { alert(m.message); if (!lineEls.length) logout(); }
     };
@@ -147,6 +155,18 @@
     localStorage.removeItem('tp_role'); role = null;
     $('app').classList.add('hidden'); $('login').classList.remove('hidden');
     ws.close(); // reconnects fresh and shows the role list
+  }
+
+  function renderScriptPicker() {
+    const sel = $('dScript');
+    sel.innerHTML = '';
+    for (const s of scripts) {
+      const o = document.createElement('option');
+      o.value = s.id; o.textContent = s.name;
+      sel.appendChild(o);
+    }
+    sel.value = activeScript;
+    sel.classList.toggle('hidden', scripts.length < 2); // nothing to pick with a single script
   }
 
   function renderScript() {
@@ -185,6 +205,7 @@
     btn.textContent = !cur ? 'Finished'
       : myTurn ? 'Done — next line ▶'
       : role === director ? 'Skip ' + cur.role + '’s line ▶'
+      : !roles.includes(role) ? 'No lines for you in this script'
       : 'Waiting for ' + cur.role + '…';
     if (myTurn && !wasMyTurn && navigator.vibrate) navigator.vibrate([200, 80, 200]);
     wasMyTurn = myTurn;
@@ -395,7 +416,12 @@
   $('dBack').onclick = () => send({ type: 'back' });
   $('dNext').onclick = () => send({ type: 'done' });
   $('dReset').onclick = () => { if (confirm('Restart from the first line?')) send({ type: 'reset' }); };
-  $('dReload').onclick = () => { if (confirm('Reload script.txt from disk and restart?')) send({ type: 'reload' }); };
+  $('dReload').onclick = () => { if (confirm('Reload the scripts from disk and restart?')) send({ type: 'reload' }); };
+  $('dScript').onchange = e => {
+    const sel = e.target, name = sel.options[sel.selectedIndex].textContent;
+    if (confirm('Switch to “' + name + '”? Everyone restarts from its first line.')) send({ type: 'use', id: sel.value });
+    else sel.value = activeScript; // cancelled: put the picker back
+  };
   document.addEventListener('keydown', e => {
     if ((e.key === ' ' || e.key === 'Enter') && !$('done').disabled) { e.preventDefault(); send({ type: 'done' }); }
   });

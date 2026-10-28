@@ -1,5 +1,6 @@
 // Teleprompter server: one script, many roles.
-// Usage: node server.js [script.txt]     (PORT env var, default 3000)
+// Usage: node server.js [scripts-folder | script.txt]     (PORT env var, default 3000)
+// With a folder (default: ./scripts) every .txt in it is a script the Director can switch between.
 
 const http = require('http');
 const fs = require('fs');
@@ -7,7 +8,10 @@ const path = require('path');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
-const SCRIPT_FILE = path.resolve(process.argv[2] || path.join(__dirname, 'script.txt'));
+const DEFAULT_DIR = path.join(__dirname, 'scripts');
+const SOURCE = path.resolve(process.argv[2] ||
+  (fs.existsSync(DEFAULT_DIR) ? DEFAULT_DIR : path.join(__dirname, 'script.txt'))); // script.txt: old layout
+const SOURCE_IS_DIR = fs.statSync(SOURCE).isDirectory();
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MUSIC_DIR = path.join(PUBLIC_DIR, 'music'); // background tracks played on the Director's device
 const AUDIO_EXT = new Set(['.mp3', '.ogg', '.wav', '.m4a', '.aac']);
@@ -48,11 +52,31 @@ function listTracks() {
     }));
 }
 
+// ---------- Available scripts ----------
+// scripts/act-1.txt -> { id: 'act-1.txt', name: 'act 1' }; sorted naturally (act 2 before act 10).
+function listScripts() {
+  if (!SOURCE_IS_DIR) return [{ id: path.basename(SOURCE), name: path.basename(SOURCE, path.extname(SOURCE)), file: SOURCE }];
+  return fs.readdirSync(SOURCE)
+    .filter(f => /\.txt$/i.test(f))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+    .map(f => ({ id: f, name: f.replace(/\.txt$/i, '').replace(/[-_]+/g, ' ').trim(), file: path.join(SOURCE, f) }));
+}
+
 let script = [];
 let roles = [];
 let tracks = [];
-function loadScript() {
-  script = parseScript(fs.readFileSync(SCRIPT_FILE, 'utf8'));
+let scriptList = [];
+let activeId = null;
+// Re-reads the folder and the active script (or `id` if given; falls back to the first script).
+// Throws before changing anything if nothing can be loaded, so a bad file never breaks a running show.
+function loadScript(id = activeId) {
+  const list = listScripts();
+  if (!list.length) throw new Error('No .txt scripts found in ' + SOURCE);
+  const pick = list.find(s => s.id === id) || list[0];
+  const parsed = parseScript(fs.readFileSync(pick.file, 'utf8'));
+  scriptList = list;
+  activeId = pick.id;
+  script = parsed;
   roles = [...new Set(script.filter(l => l.type === 'line').map(l => l.role))];
   tracks = listTracks();
 }
@@ -77,7 +101,14 @@ function stateMsg() {
   return JSON.stringify({ type: 'state', current, total: script.length, online: online() });
 }
 function scriptMsg() {
-  return JSON.stringify({ type: 'script', roles, lines: script, director: DIRECTOR, tracks });
+  // `current` travels with the script so a client never pairs a new script with an old position.
+  return JSON.stringify({
+    type: 'script', roles, lines: script, director: DIRECTOR, tracks, current,
+    scripts: scriptList.map(({ id, name }) => ({ id, name })), active: activeId,
+  });
+}
+function rolesMsg() {
+  return JSON.stringify({ type: 'roles', roles, director: DIRECTOR });
 }
 function broadcast(msg) {
   for (const c of wss.clients) if (c.readyState === 1 && c.role) c.send(msg);
@@ -126,7 +157,7 @@ const wss = new WebSocketServer({ server });
 wss.on('connection', ws => {
   ws.role = null;
   // Anyone can see the role list before logging in.
-  ws.send(JSON.stringify({ type: 'roles', roles, director: DIRECTOR }));
+  ws.send(rolesMsg());
 
   ws.on('message', buf => {
     let m;
@@ -168,12 +199,17 @@ wss.on('connection', ws => {
     } else if (isDirector && m.type === 'reset') {
       current = skipDirections(0);
       broadcast(stateMsg());
-    } else if (isDirector && m.type === 'reload') {
+    } else if (isDirector && (m.type === 'reload' || m.type === 'use')) {
+      // reload: re-read the folder and the active script. use: switch to the script with that id.
       try {
-        loadScript();
+        const target = m.type === 'use' ? scriptList.find(s => s.id === m.id) : null;
+        if (m.type === 'use' && (!target || target.id === activeId)) return;
+        loadScript(target ? target.id : activeId);
         current = skipDirections(0);
         broadcast(scriptMsg());
         broadcast(stateMsg());
+        // People still on the role screen need the new script's roles too.
+        for (const c of wss.clients) if (c.readyState === 1 && !c.role) c.send(rolesMsg());
       } catch (e) {
         ws.send(JSON.stringify({ type: 'error', message: 'Reload failed: ' + e.message }));
       }
@@ -185,6 +221,7 @@ wss.on('connection', ws => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Teleprompter running on http://localhost:${PORT}`);
-  console.log(`Script: ${SCRIPT_FILE}`);
+  console.log(`Scripts: ${SOURCE}  (${scriptList.map(s => s.id).join(', ')})`);
+  console.log(`Active: ${activeId}`);
   console.log(`Roles: ${roles.join(', ')}  (plus ${DIRECTOR})`);
 });
