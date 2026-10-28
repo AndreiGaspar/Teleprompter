@@ -97,9 +97,11 @@ function skipDirections(i) {
 }
 current = skipDirections(0);
 
+// Every connected device has `roles` (null until it logs in): the roles it plays. One person can
+// cover several roles, e.g. when an actor is away.
 function online() {
   const set = new Set();
-  for (const c of wss.clients) if (c.role && c.readyState === 1) set.add(c.role);
+  for (const c of wss.clients) if (c.roles && c.readyState === 1) for (const r of c.roles) set.add(r);
   return [...set];
 }
 
@@ -117,7 +119,7 @@ function rolesMsg() {
   return JSON.stringify({ type: 'roles', roles, director: DIRECTOR });
 }
 function broadcast(msg) {
-  for (const c of wss.clients) if (c.readyState === 1 && c.role) c.send(msg);
+  for (const c of wss.clients) if (c.readyState === 1 && c.roles) c.send(msg);
 }
 
 // ---------- HTTP (static files) ----------
@@ -161,7 +163,8 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', ws => {
-  ws.role = null;
+  ws.roles = null;       // null = not logged in
+  ws.isDirector = false;
   // Anyone can see the role list before logging in.
   ws.send(rolesMsg());
 
@@ -170,24 +173,32 @@ wss.on('connection', ws => {
     try { m = JSON.parse(buf); } catch { return; }
 
     if (m.type === 'login') {
-      const role = String(m.role || '').toUpperCase();
-      const isDirector = role === DIRECTOR.toUpperCase();
-      if (!isDirector && !roles.includes(role)) return ws.send(JSON.stringify({ type: 'error', message: 'Unknown role' }));
-      ws.role = isDirector ? DIRECTOR : role;
-      ws.send(JSON.stringify({ type: 'welcome', role: ws.role }));
+      // `roles` (a list) is the current form; a single `role` string is still accepted.
+      const asked = (Array.isArray(m.roles) ? m.roles : [m.role]).slice(0, 20).map(r => String(r || '').toUpperCase());
+      if (asked.includes(DIRECTOR.toUpperCase())) {       // the Director is a login of its own, never combined
+        ws.isDirector = true;
+        ws.roles = [DIRECTOR];
+      } else {
+        // Keep the roles this script has; a saved role that is gone (script switched) is just dropped.
+        const mine = [...new Set(asked.filter(r => roles.includes(r)))];
+        if (!mine.length) return ws.send(JSON.stringify({ type: 'error', message: 'Unknown role' }));
+        ws.isDirector = false;
+        ws.roles = mine;
+      }
+      ws.send(JSON.stringify({ type: 'welcome', roles: ws.roles }));
       ws.send(scriptMsg());
       ws.send(stateMsg());
       return broadcast(stateMsg());
     }
 
-    if (!ws.role) return;
-    const isDirector = ws.role === DIRECTOR;
+    if (!ws.roles) return;
+    const isDirector = ws.isDirector;
     const line = script[current];
 
     if (m.type === 'done') {
-      // An actor may only finish their own line; the director may finish any.
+      // An actor may only finish a line of one of their roles; the director may finish any.
       if (!line || line.type !== 'line') return;
-      if (!isDirector && line.role !== ws.role) return;
+      if (!isDirector && !ws.roles.includes(line.role)) return;
       current = skipDirections(current + 1);
       broadcast(stateMsg());
     } else if (isDirector && m.type === 'back') {
@@ -215,7 +226,7 @@ wss.on('connection', ws => {
         broadcast(scriptMsg());
         broadcast(stateMsg());
         // People still on the role screen need the new script's roles too.
-        for (const c of wss.clients) if (c.readyState === 1 && !c.role) c.send(rolesMsg());
+        for (const c of wss.clients) if (c.readyState === 1 && !c.roles) c.send(rolesMsg());
       } catch (e) {
         ws.send(JSON.stringify({ type: 'error', message: 'Reload failed: ' + e.message }));
       }

@@ -19,6 +19,17 @@ A special **Director** login can skip, go back, jump to any line (tap it),
 restart, switch scripts, or reload the scripts from disk. The Director's device
 also plays the background music (see below).
 
+## One person, several roles
+
+If an actor is away, someone else can cover their part. On the role screen tap
+**Playing more than one role?**, tick every role the person will play, and press
+**Join as …**. All of those roles' lines are highlighted on that device, the button
+says which role you are finishing ("Done as BOB"), and the phone buzzes for each of
+your turns. Everyone else sees all of those roles as online. Your choice is
+remembered when the page reloads; **Switch role** goes back to the role screen.
+A role the active script does not have is simply dropped. The Director login is
+separate and is never combined with actor roles.
+
 ## Multiple scripts
 
 Every `.txt` file in `scripts/` is a script (`act-1.txt` shows as "act 1", sorted

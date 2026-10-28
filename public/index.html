@@ -23,6 +23,11 @@
   .rolebtn:active { border-color: var(--accent); }
   .rolebtn small { float: right; color: var(--ok); }
   .rolebtn.director { border-style: dashed; color: var(--dim); }
+  .rolebtn.picked { border-color: var(--me); background: rgba(79,195,247,.10); }
+  .rolebtn.go { background: var(--accent); color: #111; border-color: transparent; font-weight: 700; text-align: center; }
+  .rolebtn.go:disabled { opacity: .35; }
+  .linkbtn { display: block; margin: 0 0 18px; padding: 8px 0; background: none; border: 0; color: var(--dim);
+    font-size: 1rem; text-decoration: underline; cursor: pointer; }
 
   /* Prompter */
   #app { display: flex; flex-direction: column; height: 100%; }
@@ -101,15 +106,27 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  let ws, role = localStorage.getItem('tp_role'), roles = [], director = 'Director';
-  let script = [], current = 0, online = [], lineEls = [], wasMyTurn = false, tracks = [];
+  // The roles this device plays: one for most people, two or more when someone covers for an absent
+  // actor. Saved as a JSON list (a plain "ANNA" saved by an older version still loads).
+  const loadSaved = () => {
+    let s = null;
+    try { s = localStorage.getItem('tp_role'); } catch {}
+    if (!s) return [];
+    try { const v = JSON.parse(s); return (Array.isArray(v) ? v : [v]).map(String); } catch { return [s]; }
+  };
+  const saveRoles = list => { try { localStorage.setItem('tp_role', JSON.stringify(list)); } catch {} };
+  let ws, myRoles = loadSaved(), roles = [], director = 'Director';
+  let script = [], current = 0, online = [], lineEls = [], lastMyTurn = -1, tracks = [];
   let scripts = [], activeScript = null;
+  let multi = false; const picked = new Set(); // login screen: "playing more than one role" mode
+  const isDirector = () => myRoles.length === 1 && myRoles[0] === director;
+  const isMine = r => myRoles.includes(r);
 
   function connect() {
     ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
     ws.onopen = () => {
       $('status').textContent = 'live'; $('status').className = '';
-      if (role) ws.send(JSON.stringify({ type: 'login', role }));
+      if (myRoles.length) ws.send(JSON.stringify({ type: 'login', roles: myRoles }));
     };
     ws.onclose = () => {
       $('status').textContent = 'reconnecting…'; $('status').className = 'bad';
@@ -118,9 +135,12 @@
     ws.onmessage = e => {
       const m = JSON.parse(e.data);
       if (m.type === 'roles') { roles = m.roles; director = m.director; renderLogin(); }
-      else if (m.type === 'welcome') { showApp(); }
+      else if (m.type === 'welcome') {
+        myRoles = m.roles; saveRoles(myRoles); // what the server accepted (roles missing from the script are dropped)
+        showApp();
+      }
       else if (m.type === 'script') {
-        script = m.lines; roles = m.roles; tracks = m.tracks || [];
+        script = m.lines; roles = m.roles; tracks = m.tracks || []; lastMyTurn = -1;
         if (typeof m.current === 'number') current = m.current; // keep script and position in step
         scripts = m.scripts || []; activeScript = m.active;
         renderScriptPicker(); renderScript();
@@ -130,29 +150,51 @@
     };
   }
 
+  function join(list) {
+    myRoles = list; saveRoles(list);
+    ws.send(JSON.stringify({ type: 'login', roles: list }));
+    music.enable(); // this tap is the user gesture browsers require before audio may start
+  }
+
   function renderLogin() {
     const box = $('rolelist'); box.innerHTML = '';
-    [...roles, director].forEach(r => {
+    for (const r of [...picked]) if (!roles.includes(r)) picked.delete(r); // the script may have changed
+    const btn = (text, cls, onclick) => {
       const b = document.createElement('button');
-      b.className = 'rolebtn' + (r === director ? ' director' : '');
-      b.textContent = r === director ? 'Director (control everything)' : r;
-      b.onclick = () => {
-        role = r; localStorage.setItem('tp_role', role); ws.send(JSON.stringify({ type: 'login', role }));
-        music.enable(); // this tap is the user gesture browsers require before audio may start
-      };
+      b.className = cls; b.textContent = text; b.onclick = onclick;
       box.appendChild(b);
+      return b;
+    };
+    roles.forEach(r => {
+      const on = multi && picked.has(r);
+      btn((multi ? (on ? '☑ ' : '☐ ') : '') + r, 'rolebtn' + (on ? ' picked' : ''), () => {
+        if (!multi) return join([r]);                      // the usual case: one tap and you are in
+        if (picked.has(r)) picked.delete(r); else picked.add(r);
+        renderLogin();
+      });
     });
+    if (multi) {
+      const list = roles.filter(r => picked.has(r));       // script order, so "ANNA + BOB" is stable
+      const go = btn(list.length ? 'Join as ' + list.join(' + ') : 'Pick the roles you will play', 'rolebtn go', () => join(list));
+      go.disabled = !list.length;
+    }
+    if (roles.length > 1) {
+      const t = btn(multi ? 'Just one role' : 'Playing more than one role?', 'linkbtn', () => { multi = !multi; picked.clear(); renderLogin(); });
+      t.id = 'multiToggle';
+    }
+    btn('Director (control everything)', 'rolebtn director', () => join([director]));
   }
 
   function showApp() {
     $('login').classList.add('hidden'); $('app').classList.remove('hidden');
-    $('me').textContent = role;
-    $('director').classList.toggle('hidden', role !== director);
+    $('me').textContent = myRoles.join(' + ');
+    $('director').classList.toggle('hidden', !isDirector());
   }
 
   function logout() {
     music.stop();
-    localStorage.removeItem('tp_role'); role = null;
+    try { localStorage.removeItem('tp_role'); } catch {}
+    myRoles = []; multi = false; picked.clear(); lastMyTurn = -1;
     $('app').classList.add('hidden'); $('login').classList.remove('hidden');
     ws.close(); // reconnects fresh and shows the role list
   }
@@ -176,10 +218,10 @@
       if (l.type === 'direction') {
         d.className = 'line dir'; d.textContent = '(' + l.text + ')';
       } else {
-        d.className = 'line' + (l.role === role ? ' mine' : '');
+        d.className = 'line' + (isMine(l.role) ? ' mine' : '');
         const w = document.createElement('span'); w.className = 'who'; w.textContent = l.role;
         d.appendChild(w); d.appendChild(document.createTextNode(l.text));
-        if (role === director) { d.classList.add('clickable'); d.onclick = () => send({ type: 'jump', index: i }); }
+        if (isDirector()) { d.classList.add('clickable'); d.onclick = () => send({ type: 'jump', index: i }); }
       }
       box.appendChild(d); lineEls.push(d);
     });
@@ -197,18 +239,19 @@
     $('end').classList.toggle('hidden', current < script.length);
 
     const cur = script[current];
-    const myTurn = !!cur && cur.type === 'line' && cur.role === role;
-    const canAct = myTurn || (role === director && !!cur);
+    const myTurn = !!cur && cur.type === 'line' && isMine(cur.role);
+    const canAct = myTurn || (isDirector() && !!cur);
     const btn = $('done');
     btn.disabled = !canAct;
     btn.classList.toggle('ready', canAct);
     btn.textContent = !cur ? 'Finished'
-      : myTurn ? 'Done — next line ▶'
-      : role === director ? 'Skip ' + cur.role + '’s line ▶'
-      : !roles.includes(role) ? 'No lines for you in this script'
+      : myTurn ? (myRoles.length > 1 ? 'Done as ' + cur.role + ' — next line ▶' : 'Done — next line ▶')
+      : isDirector() ? 'Skip ' + cur.role + '’s line ▶'
+      : !myRoles.some(r => roles.includes(r)) ? 'No lines for you in this script'
       : 'Waiting for ' + cur.role + '…';
-    if (myTurn && !wasMyTurn && navigator.vibrate) navigator.vibrate([200, 80, 200]);
-    wasMyTurn = myTurn;
+    // Buzz once per line that is yours, so covering two roles still gets a nudge for each turn.
+    if (myTurn && current !== lastMyTurn && navigator.vibrate) navigator.vibrate([200, 80, 200]);
+    lastMyTurn = myTurn ? current : -1;
 
     $('online').innerHTML = 'Online: ' + (online.length ? online.map(r => '<b>' + esc(r) + '</b>').join(', ') : 'nobody');
 
@@ -270,7 +313,6 @@
     let vol = parseFloat(localStorage.getItem('tp_music_vol'));
     if (!(vol >= 0 && vol <= 1)) vol = 0.7;
     const loaded = {};                     // file -> { audio, gain, timer, active, unlocked }
-    const isDirector = () => role === director;
     const ready = () => !!ctx && !blocked && ctx.state === 'running';
     let enabledByThisTap = false;          // set by the capture-phase tap handler below
 
